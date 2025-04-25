@@ -28,7 +28,6 @@ import { Switch } from "@/app/components/ui/switch"
 import { Label } from "@/app/components/ui/label"
 import { Alert, AlertDescription, AlertTitle } from "@/app/components/ui/alert"
 import ReactMarkdown from "react-markdown"
-import { VoiceRecorder } from "../app/components/voice-recorder"
 
 // Define the message structure
 interface Message {
@@ -37,6 +36,12 @@ interface Message {
   sender: "user" | "system"
   references?: Reference[]
   role: "user" | "assistant"
+}
+
+// Define VoiceRecorderProps interface
+interface VoiceRecorderProps {
+  onTranscription: (text: string) => void;
+  disabled?: boolean;
 }
 
 // This function splits a text into chunks based on natural breakpoints
@@ -295,6 +300,192 @@ const MessageBubble = ({ id, content, role, isCurrentlyReading, onReadMessage, o
         <Avatar className="ml-2">
           <div className="bg-green-500 w-full h-full flex items-center justify-center text-white">You</div>
         </Avatar>
+      )}
+    </div>
+  );
+};
+
+// Replace the existing VoiceRecorder component with this improved one
+const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled }) => {
+  const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const lottiePlayerRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/@lottiefiles/lottie-player@2.0.8/dist/lottie-player.js';
+    script.async = true;
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
+  const startRecording = async () => {
+    try {
+      if (!navigator.mediaDevices || !window.MediaRecorder) {
+        throw new Error('Browser does not support voice recording. Please use Chrome, Firefox, or Edge.');
+      }
+
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          sampleRate: 44100,
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+        } 
+      });
+      
+      streamRef.current = stream;
+
+      const mimeTypes = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'];
+      let mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
+      
+      if (!mimeType) {
+        throw new Error('No supported audio format found');
+      }
+
+      mediaRecorderRef.current = new MediaRecorder(stream, {
+        mimeType,
+        audioBitsPerSecond: 128000
+      });
+
+      chunksRef.current = [];
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorderRef.current.onstop = async () => {
+        try {
+          const audioBlob = new Blob(chunksRef.current, { type: mimeType });
+          await processAudio(audioBlob);
+        } catch (err) {
+          console.error('Error processing audio:', err);
+          setError('Failed to process audio');
+        } finally {
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+          }
+        }
+      };
+
+      mediaRecorderRef.current.start(100);
+      setIsRecording(true);
+      setError(null);
+
+      if (lottiePlayerRef.current) {
+        lottiePlayerRef.current.play();
+      }
+    } catch (err) {
+      console.error('Error starting recording:', err);
+      setError(err instanceof Error ? err.message : 'Failed to start recording');
+      
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      try {
+        mediaRecorderRef.current.stop();
+        setIsRecording(false);
+        if (lottiePlayerRef.current) {
+          lottiePlayerRef.current.pause();
+          lottiePlayerRef.current.currentTime = 0;
+        }
+      } catch (err) {
+        console.error('Error stopping recording:', err);
+        setError('Failed to stop recording');
+      }
+    }
+  };
+
+  const processAudio = async (audioBlob: Blob) => {
+    setIsProcessing(true);
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioBlob);
+
+      const response = await fetch('/api/stt', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to process audio');
+      }
+
+      const data = await response.json();
+      if (data.text) {
+        onTranscription(data.text);
+      }
+    } catch (err) {
+      console.error('Error processing audio:', err);
+      setError(err instanceof Error ? err.message : 'Failed to process audio');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
+      }
+      setIsRecording(false);
+      setIsProcessing(false);
+    };
+  }, []);
+
+  return (
+    <div className="flex items-center space-x-2">
+      <button
+        onClick={isRecording ? stopRecording : startRecording}
+        disabled={disabled || isProcessing}
+        className={`p-2 rounded-full transition-all duration-200 ${
+          isRecording 
+            ? 'bg-green-500 scale-125 flex items-center justify-center' 
+            : 'bg-gray-100'
+        } hover:bg-opacity-90 disabled:opacity-50`}
+        title={isRecording ? 'Stop Recording' : 'Start Recording'}
+        type="button"
+      >
+        {isProcessing ? (
+          <Loader className="w-4 h-4 animate-spin text-gray-600" />
+        ) : isRecording ? (
+          <Mic className="w-6 h-6 text-white" />
+        ) : (
+          <Mic className="w-4 h-4 text-gray-600" />
+        )}
+      </button>
+      
+      {isRecording && (
+        <span className="text-sm text-gray-600">Tap the microphone and start speaking...</span>
+      )}
+      
+      {error && (
+        <span className="text-xs text-red-500">{error}</span>
       )}
     </div>
   );
@@ -902,7 +1093,7 @@ export default function Home() {
                                 submitChat(new Event("submit") as any, {
                                   data: { message: text },
                                 });
-                              }, 300);
+                              }, 300); // Slightly longer delay
                             } else {
                               console.error("Empty transcription received");
                             }
@@ -924,3 +1115,5 @@ export default function Home() {
     </div>
   )
 }
+
+
