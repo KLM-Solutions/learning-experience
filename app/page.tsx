@@ -310,6 +310,7 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [transcript, setTranscript] = useState("");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -459,29 +460,35 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
   }, []);
 
   return (
-    <div className="flex items-center space-x-2">
+    <div className="flex flex-col items-center">
       <button
         onClick={isRecording ? stopRecording : startRecording}
         disabled={disabled || isProcessing}
-        className={`p-2 rounded-full transition-all duration-200 ${
-          isRecording 
-            ? 'bg-green-500 scale-125 flex items-center justify-center' 
-            : 'bg-gray-100'
-        } hover:bg-opacity-90 disabled:opacity-50`}
-        title={isRecording ? 'Stop Recording' : 'Start Recording'}
+        className={`
+          ${isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'} 
+          w-24 h-24 rounded-full flex items-center justify-center transition-colors
+          ${disabled || isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+        `}
+        title={isRecording ? "Stop recording" : "Start recording"}
         type="button"
       >
         {isProcessing ? (
-          <Loader className="w-4 h-4 animate-spin text-gray-600" />
-        ) : isRecording ? (
-          <Mic className="w-6 h-6 text-white" />
+          <Loader className="h-10 w-10 text-white animate-spin" />
         ) : (
-          <Mic className="w-4 h-4 text-gray-600" />
+          <Mic className="h-10 w-10 text-white" />
         )}
       </button>
       
-      {isRecording && (
-        <span className="text-sm text-gray-600">Tap the microphone and start speaking...</span>
+      <p className="mt-4 text-gray-500 text-center">
+        {isRecording 
+          ? "Listening... Click to stop" 
+          : "Tap the microphone and start speaking..."}
+      </p>
+      
+      {transcript && isRecording && (
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg max-w-md">
+          <p className="text-sm font-medium">{transcript}</p>
+        </div>
       )}
       
       {error && (
