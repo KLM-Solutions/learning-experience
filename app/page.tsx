@@ -435,6 +435,10 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
 
       const data = await response.json();
       if (data.text) {
+        setTranscript(data.text);
+        
+        // Automatically pass the text to the parent component
+        // This will trigger the API call in the parent component
         onTranscription(data.text);
       }
     } catch (err) {
@@ -485,7 +489,7 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
           : "Tap the microphone and start speaking..."}
       </p>
       
-      {transcript && isRecording && (
+      {transcript && (
         <div className="mt-4 p-3 bg-gray-50 rounded-lg max-w-md">
           <p className="text-sm font-medium">{transcript}</p>
         </div>
@@ -508,6 +512,7 @@ export default function Home() {
   const lastMessageRef = useRef<string | null>(null)
   const [initialMessageSent, setInitialMessageSent] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const formRef = useRef<HTMLFormElement | null>(null);
 
   // Function to get initial message based on selected mode
   const getInitialMessage = (mode: LearningMode): string => {
@@ -681,6 +686,24 @@ export default function Home() {
       }
     }
   }, [messages, chatIsLoading, autoRead]);
+
+  const handleTranscription = (text: string) => {
+    // First set the text in the input area (for display purposes)
+    handleInputChange({
+      target: { value: text }
+    } as React.ChangeEvent<HTMLTextAreaElement>);
+    
+    // Focus on the input area
+    if (formRef.current) {
+      const textarea = formRef.current.querySelector('textarea');
+      if (textarea) {
+        textarea.focus();
+      }
+    }
+    
+    // Optional: Close the microphone modal if you're using one
+    setInputMethod("keyboard");
+  };
 
   return (
     <div className="min-h-screen w-full overflow-y-auto">
@@ -1023,26 +1046,39 @@ export default function Home() {
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
-                      <div className="flex space-x-2 pb-4">
-                        <Textarea
-                          value={input || inputText}
-                          onChange={(e) => {
-                            handleInputChange(e)
-                            setInputText(e.target.value)
-                          }}
-                          placeholder="Type your message here..."
-                          className="flex-1 min-h-[100px] resize-none border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                      <div className="flex space-x-2 sm:space-x-4">
+                        <textarea
+                          value={input}
+                          onChange={handleInputChange}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault()
-                              handleSubmitInput()
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              formRef.current?.requestSubmit();
                             }
                           }}
+                          rows={1}
+                          placeholder="Type your message here..."
+                          className="flex-1 p-2 sm:p-3 text-sm sm:text-base border border-slate-200 rounded-md focus:outline-none focus:border-[#1AAFEE] focus:ring-1 focus:ring-[#1AAFEE] bg-white text-slate-900 resize-none overflow-y-auto min-h-[40px] max-h-[160px]"
                         />
-                        <Button onClick={handleSubmitInput} className="bg-blue-600 hover:bg-blue-700 self-end">
-                          <Send className="h-4 w-4 mr-2" />
-                          Send
-                        </Button>
+                        
+                        <form ref={formRef} onSubmit={handleSubmitInput} className="space-y-2">
+                          <button
+                            type="submit"
+                            disabled={isLoading || !input.trim()}
+                            className={`bg-[#000000] text-white px-3 sm:px-4 py-2 rounded-md flex items-center space-x-1 sm:space-x-2 hover:bg-[#333333] transition-colors duration-300 ${
+                              (!input.trim()) ? 'opacity-50 cursor-not-allowed' : ''
+                            }`}
+                          >
+                            {isLoading ? (
+                              <Loader className="h-5 w-5 animate-spin" />
+                            ) : (
+                              <>
+                                <Send size={20} />
+                                <span className="hidden sm:inline">Send</span>
+                              </>
+                            )}
+                          </button>
+                        </form>
                       </div>
                     </div>
                   </motion.div>
@@ -1080,32 +1116,8 @@ export default function Home() {
                       </div>
                       <div className="flex flex-col items-center justify-center py-8">
                         <VoiceRecorder 
-                          onTranscription={(text) => {
-                            if (text && text.trim()) {
-                              console.log("Transcription received:", text); // Add logging
-                              
-                              // Set the transcribed text to inputText
-                              setInputText(text);
-                              
-                              // Update AI SDK's input state
-                              handleInputChange({
-                                target: { value: text }
-                              } as React.ChangeEvent<HTMLTextAreaElement>);
-                              
-                              // Close the microphone modal
-                              setInputMethod("none");
-                              
-                              // Use setTimeout to ensure state updates have propagated
-                              setTimeout(() => {
-                                submitChat(new Event("submit") as any, {
-                                  data: { message: text },
-                                });
-                              }, 300); // Slightly longer delay
-                            } else {
-                              console.error("Empty transcription received");
-                            }
-                          }}
-                          disabled={chatIsLoading}
+                          onTranscription={handleTranscription} 
+                          disabled={isLoading || chatIsLoading} 
                         />
                         <p className="mt-6 text-sm text-gray-500 max-w-md text-center">
                           Tap the microphone and start speaking. Make sure to allow microphone permissions.
