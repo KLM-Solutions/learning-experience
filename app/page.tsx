@@ -291,8 +291,18 @@ const MessageBubble = ({ id, content, role, isCurrentlyReading, onReadMessage, o
           </div>
         )}
         
-        <div className="prose max-w-none">
-          <ReactMarkdown>{content}</ReactMarkdown>
+        <div className="prose prose-lg max-w-none space-y-4 markdown-custom">
+          <ReactMarkdown
+            components={{
+              p: ({node, ...props}) => <p className="my-4 leading-relaxed" {...props} />,
+              li: ({node, ...props}) => <li className="mb-2" {...props} />,
+              h1: ({node, ...props}) => <h1 className="mt-6 mb-4" {...props} />,
+              h2: ({node, ...props}) => <h2 className="mt-5 mb-4" {...props} />,
+              h3: ({node, ...props}) => <h3 className="mt-4 mb-3" {...props} />,
+            }}
+          >
+            {content}
+          </ReactMarkdown>
         </div>
       </div>
       
@@ -1099,19 +1109,19 @@ export default function Home() {
               {/* Keyboard input overlay */}
               {inputMethod === "keyboard" && (
                 <motion.div
-                  className="fixed inset-0 bg-black/30 flex items-end justify-center z-50"
+                  className="fixed inset-0 bg-transparent flex items-end justify-center z-50"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.2 }}
                 >
                   <motion.div
-                    className="w-full bg-gray-50 rounded-t-xl shadow-md"
+                    className="w-full bg-transparent backdrop-blur-sm border border-gray-200 rounded-t-xl"
                     initial={{ y: 100 }}
                     animate={{ y: 0 }}
                     transition={{ duration: 0.3, type: "spring" }}
                   >
-                    <div className="max-w-4xl mx-auto px-4 py-4">
-                      <div className="flex justify-between items-center mb-4">
+                    <div className="max-w-4xl mx-auto px-4 py-4 bg-transparent">
+                      <div className="flex justify-between items-center mb-4 bg-transparent">
                         <h3 className="font-medium flex items-center text-gray-700">
                           <MessageSquare className="h-5 w-5 mr-2 text-blue-400" />
                           Type your message
@@ -1119,13 +1129,13 @@ export default function Home() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="rounded-full hover:bg-gray-100 text-gray-500"
+                          className="rounded-full hover:bg-gray-100/20 text-gray-500 bg-transparent"
                           onClick={() => setInputMethod("none")}
                         >
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
-                      <div className="flex space-x-2 sm:space-x-4">
+                      <div className="flex space-x-2 sm:space-x-4 bg-transparent">
                         <textarea
                           value={input}
                           onChange={handleInputChange}
@@ -1138,12 +1148,12 @@ export default function Home() {
                           rows={1}
                           placeholder="Type your message here..."
                           className="flex-1 p-2 sm:p-3 text-sm sm:text-base 
-                            border border-gray-100 
+                            border border-gray-200 
                             rounded-md 
                             focus:outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-300 
-                            bg-gray-50 text-gray-800 
-                            resize-none overflow-y-auto min-h-[40px] max-h-[160px]
-                            shadow-sm"
+                            bg-transparent text-gray-800 
+                            placeholder-gray-400
+                            resize-none overflow-y-auto min-h-[40px] max-h-[160px]"
                         />
                         
                         <form ref={formRef} onSubmit={handleSubmitInput} className="space-y-2">
