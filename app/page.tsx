@@ -604,27 +604,20 @@ export default function Home() {
     setError(null)
   }
 
-  // Handle input submission - simplified to just pass the message to API
-  const handleSubmitInput = () => {
-    if (!input.trim() && !inputText.trim()) return;
-
-    // Use the input from either the AI SDK input or our custom input
-    const message = input || inputText;
+  // Create a custom submit handler that prevents default behavior
+  const handleSubmitInput = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault(); // This prevents the page refresh
     
-    // Log what's being submitted (for debugging)
-    console.log("Submitting message:", message);
-
+    if (!input.trim()) return;
+    
     // Submit the message using the AI SDK
-    submitChat(new Event("submit") as any, {
-      data: { message },
+    submitChat(e, {
+      data: { message: input },
     });
-
-    // Reset our custom input if we're using it
-    setInputText("");
     
-    // Hide the input interface after sending
+    // Close the text area by resetting the input method
     setInputMethod("none");
-  }
+  };
 
   // Get mode title
   const getModeTitle = () => {
