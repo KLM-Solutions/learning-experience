@@ -267,44 +267,44 @@ const MessageBubble = ({ id, content, role, isCurrentlyReading, onReadMessage, o
   return (
     <div className={`flex ${role === 'user' ? 'justify-end' : 'justify-start'} mb-4`}>
       {role === 'assistant' && (
-        <Avatar className="mr-2">
-          <div className="bg-blue-500 w-full h-full flex items-center justify-center text-white">AI</div>
-        </Avatar>
-      )}
-      <div
-        className={`p-4 rounded-lg max-w-[80%] ${
-          role === 'user'
-            ? 'bg-blue-100 text-blue-900 ml-2 rounded-tr-none'
-            : 'bg-blue-50 border border-blue-100 text-gray-800 mr-2 rounded-tl-none'
-        }`}
-      >
-        {role === 'assistant' && (
-          <div className="mb-2">
-            <TTSControls 
-              messageContent={content} 
-              messageId={id}
-              isEnabled={true}
-              audioChunks={audioChunks}
-              isCurrentlyReading={isCurrentlyReading}
-              onStopReading={onStopReading}
+        <div className="flex items-start mb-4">
+          <div className="mr-2 flex-shrink-0">
+            <Image 
+              src="/diana.png" 
+              alt="Assistant" 
+              width={40} 
+              height={40} 
+              className="rounded-full"
             />
           </div>
-        )}
-        
-        <div className="prose prose-lg max-w-none space-y-4 markdown-custom">
-          <ReactMarkdown
-            components={{
-              p: ({node, ...props}) => <p className="my-4 leading-relaxed" {...props} />,
-              li: ({node, ...props}) => <li className="mb-2" {...props} />,
-              h1: ({node, ...props}) => <h1 className="mt-6 mb-4" {...props} />,
-              h2: ({node, ...props}) => <h2 className="mt-5 mb-4" {...props} />,
-              h3: ({node, ...props}) => <h3 className="mt-4 mb-3" {...props} />,
-            }}
-          >
-            {content}
-          </ReactMarkdown>
+          <div className="flex-1 bg-blue-50 rounded-lg p-4">
+            <div className="mb-2">
+              <TTSControls 
+                messageContent={content} 
+                messageId={id}
+                isEnabled={true}
+                audioChunks={audioChunks}
+                isCurrentlyReading={isCurrentlyReading}
+                onStopReading={onStopReading}
+              />
+            </div>
+            
+            <div className="prose prose-lg max-w-none space-y-4 markdown-custom">
+              <ReactMarkdown
+                components={{
+                  p: ({node, ...props}) => <p className="my-4 leading-relaxed" {...props} />,
+                  li: ({node, ...props}) => <li className="mb-2" {...props} />,
+                  h1: ({node, ...props}) => <h1 className="mt-6 mb-4" {...props} />,
+                  h2: ({node, ...props}) => <h2 className="mt-5 mb-4" {...props} />,
+                  h3: ({node, ...props}) => <h3 className="mt-4 mb-3" {...props} />,
+                }}
+              >
+                {content}
+              </ReactMarkdown>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
       
       {role === 'user' && (
         <Avatar className="ml-2">
@@ -528,6 +528,7 @@ export default function Home() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Function to get initial message based on selected mode
   const getInitialMessage = (mode: LearningMode): string => {
@@ -785,6 +786,16 @@ export default function Home() {
       setIsProcessing(false);
     }
   };
+
+  // Add an effect to focus the textarea when keyboard input method is selected
+  useEffect(() => {
+    if (inputMethod === "keyboard" && textareaRef.current) {
+      // Short timeout to ensure the modal is rendered before focusing
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 100);
+    }
+  }, [inputMethod]);
 
   return (
     <div className="min-h-screen w-full overflow-y-auto">
@@ -1137,6 +1148,7 @@ export default function Home() {
                       </div>
                       <div className="flex space-x-2 sm:space-x-4 bg-transparent">
                         <textarea
+                          ref={textareaRef}
                           value={input}
                           onChange={handleInputChange}
                           onKeyDown={(e) => {
