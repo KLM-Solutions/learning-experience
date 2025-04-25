@@ -513,6 +513,11 @@ export default function Home() {
   const [initialMessageSent, setInitialMessageSent] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const formRef = useRef<HTMLFormElement | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   // Function to get initial message based on selected mode
   const getInitialMessage = (mode: LearningMode): string => {
@@ -696,6 +701,79 @@ export default function Home() {
     
     // Optional: Close the microphone modal if you're using one
     setInputMethod("keyboard");
+  };
+
+  const startRecording = async () => {
+    try {
+      chunksRef.current = [];
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      
+      mediaRecorder.ondataavailable = (e) => {
+        chunksRef.current.push(e.data);
+      };
+      
+      mediaRecorder.onstop = async () => {
+        try {
+          const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
+          await processAudio(audioBlob);
+        } catch (err) {
+          console.error('Error processing audio:', err);
+          setError('Failed to process audio');
+        } finally {
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+          }
+        }
+      };
+      
+      mediaRecorderRef.current.start(100);
+      setIsRecording(true);
+      setError(null);
+    } catch (err) {
+      console.error('Error starting recording:', err);
+      setError(err instanceof Error ? err.message : 'Failed to start recording');
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      try {
+        mediaRecorderRef.current.stop();
+        setIsRecording(false);
+      } catch (err) {
+        console.error('Error stopping recording:', err);
+        setError('Failed to stop recording');
+      }
+    }
+  };
+
+  const processAudio = async (audioBlob: Blob) => {
+    setIsProcessing(true);
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioBlob);
+      
+      const response = await fetch('/api/stt', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const data = await response.json();
+      if (data.text) {
+        handleTranscription(data.text);
+      }
+    } catch (err) {
+      console.error('Error processing audio:', err);
+      setError(err instanceof Error ? err.message : 'Failed to process audio');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -1001,10 +1079,18 @@ export default function Home() {
                   >
                     <Button
                       size="icon"
-                      className="rounded-full w-14 h-14 bg-green-500 hover:bg-green-600 shadow-lg"
-                      onClick={() => setInputMethod("mic")}
+                      className={`
+                        rounded-full w-14 h-14 
+                        ${isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'} 
+                        shadow-lg flex items-center justify-center
+                      `}
+                      onClick={() => isRecording ? stopRecording() : startRecording()}
                     >
-                      <Mic className="h-6 w-6" />
+                      {isProcessing ? (
+                        <Loader className="h-6 w-6 animate-spin" />
+                      ) : (
+                        <Mic className="h-6 w-6 text-white" />
+                      )}
                     </Button>
                   </motion.div>
                 </div>
@@ -1013,27 +1099,27 @@ export default function Home() {
               {/* Keyboard input overlay */}
               {inputMethod === "keyboard" && (
                 <motion.div
-                  className="fixed inset-0 bg-black/50 flex items-end justify-center z-50"
+                  className="fixed inset-0 bg-black/30 flex items-end justify-center z-50"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.2 }}
                 >
                   <motion.div
-                    className="w-full bg-white rounded-t-xl shadow-2xl"
+                    className="w-full bg-gray-50 rounded-t-xl shadow-md"
                     initial={{ y: 100 }}
                     animate={{ y: 0 }}
                     transition={{ duration: 0.3, type: "spring" }}
                   >
                     <div className="max-w-4xl mx-auto px-4 py-4">
                       <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-medium flex items-center">
-                          <MessageSquare className="h-5 w-5 mr-2 text-blue-500" />
+                        <h3 className="font-medium flex items-center text-gray-700">
+                          <MessageSquare className="h-5 w-5 mr-2 text-blue-400" />
                           Type your message
                         </h3>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="rounded-full hover:bg-gray-100"
+                          className="rounded-full hover:bg-gray-100 text-gray-500"
                           onClick={() => setInputMethod("none")}
                         >
                           <X className="h-4 w-4" />
@@ -1051,7 +1137,13 @@ export default function Home() {
                           }}
                           rows={1}
                           placeholder="Type your message here..."
-                          className="flex-1 p-2 sm:p-3 text-sm sm:text-base border border-slate-200 rounded-md focus:outline-none focus:border-[#1AAFEE] focus:ring-1 focus:ring-[#1AAFEE] bg-white text-slate-900 resize-none overflow-y-auto min-h-[40px] max-h-[160px]"
+                          className="flex-1 p-2 sm:p-3 text-sm sm:text-base 
+                            border border-gray-100 
+                            rounded-md 
+                            focus:outline-none focus:border-blue-300 focus:ring-1 focus:ring-blue-300 
+                            bg-gray-50 text-gray-800 
+                            resize-none overflow-y-auto min-h-[40px] max-h-[160px]
+                            shadow-sm"
                         />
                         
                         <form ref={formRef} onSubmit={handleSubmitInput} className="space-y-2">
@@ -1072,49 +1164,6 @@ export default function Home() {
                             )}
                           </button>
                         </form>
-                      </div>
-                    </div>
-                  </motion.div>
-                </motion.div>
-              )}
-
-              {/* Microphone input overlay */}
-              {inputMethod === "mic" && (
-                <motion.div
-                  className="fixed inset-0 bg-black/50 flex items-end justify-center z-50"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  <motion.div
-                    className="w-full bg-white rounded-t-xl shadow-2xl"
-                    initial={{ y: 100 }}
-                    animate={{ y: 0 }}
-                    transition={{ duration: 0.3, type: "spring" }}
-                  >
-                    <div className="max-w-4xl mx-auto px-4 py-4">
-                      <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-medium flex items-center">
-                          <Mic className="h-5 w-5 mr-2 text-green-500" />
-                          Speak your message
-                        </h3>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="rounded-full hover:bg-gray-100"
-                          onClick={() => setInputMethod("none")}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      </div>
-                      <div className="flex flex-col items-center justify-center py-8">
-                        <VoiceRecorder 
-                          onTranscription={handleTranscription} 
-                          disabled={isLoading || chatIsLoading} 
-                        />
-                        <p className="mt-6 text-sm text-gray-500 max-w-md text-center">
-                          Tap the microphone and start speaking. Make sure to allow microphone permissions.
-                        </p>
                       </div>
                     </div>
                   </motion.div>
