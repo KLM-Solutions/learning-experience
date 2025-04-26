@@ -745,6 +745,10 @@ export default function Home() {
 
   // Handle card selection
   const handleCardSelect = (mode: LearningMode) => {
+    // Hide tooltip first
+    setShowTooltip(false);
+    setHoveredCard(null);
+    
     console.log("Card selected:", mode)
     setSelectedMode(mode)
     setError(null)
