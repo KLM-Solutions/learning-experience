@@ -1280,7 +1280,7 @@ export default function Home() {
                       size="icon"
                       className={`rounded-full w-14 h-14 ${
                         isRecording 
-                          ? 'bg-transparent shadow-none' 
+                          ? 'bg-transparent shadow-none hover:bg-transparent' 
                           : 'bg-green-500 hover:bg-green-600 shadow-lg'
                       } flex items-center justify-center`}
                       onClick={() => isRecording ? stopRecording() : startRecording()}
@@ -1288,9 +1288,9 @@ export default function Home() {
                       {isProcessing ? (
                         <Loader className="h-6 w-6 animate-spin" />
                       ) : isRecording ? (
-                        <div className="w-14 h-14">
+                        <div className="w-20 h-20">
                           <DotLottieReact
-                            src="https://lottie.host/d9e0f21a-b610-472e-b39f-042fa5e8bbd4/yIdMu2gssb.lottie"
+                            src="https://lottie.host/64a9a191-3ffa-4874-ae19-53c7a60aaabc/hd7W8ZjBB1.lottie"
                             loop
                             autoplay
                           />
