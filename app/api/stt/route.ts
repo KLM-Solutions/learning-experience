@@ -1,3 +1,4 @@
+// app/api/stt/route.ts
 import { OpenAI } from 'openai';
 import { NextRequest } from 'next/server';
 import { ElevenLabsClient } from "elevenlabs";
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest) {
     const audioBlob = new Blob([await audioFile.arrayBuffer()], { type: 'audio/mp3' });
     const file = new File([audioBlob], 'audio.mp3', { type: 'audio/mp3' });
 
-    // Transcribe using ElevenLabs
+    // Transcribe using ElevenLabs instead of OpenAI Whisper
     const transcription = await elevenLabsClient.speechToText.convert({
       model_id: "scribe_v1",
       file: file,
@@ -57,4 +58,10 @@ export async function POST(request: NextRequest) {
       headers: { 'Content-Type': 'application/json' },
     });
   }
-} 
+}
+
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
