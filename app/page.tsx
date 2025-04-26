@@ -166,7 +166,6 @@ const TTSControls = ({ messageContent, messageId, isEnabled = true, audioChunks 
       console.error('TTS Error:', err);
       setError(err instanceof Error ? err.message : 'Failed to play audio');
       setIsPlaying(false);
-      onStopReading(); // Call the onStopReading callback
     }
   };
   
@@ -383,18 +382,11 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [transcript, setTranscript] = useState("");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const lottiePlayerRef = useRef<HTMLVideoElement | null>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Format seconds to MM:SS
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
 
   useEffect(() => {
     const script = document.createElement('script');
@@ -403,11 +395,15 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
     document.body.appendChild(script);
 
     return () => {
-      if (document.body.contains(script)) {
-        document.body.removeChild(script);
-      }
+      document.body.removeChild(script);
     };
   }, []);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const startRecording = async () => {
     try {
@@ -415,17 +411,10 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
         throw new Error('Browser does not support voice recording. Please use Chrome, Firefox, or Edge.');
       }
 
-      // Clean up any existing stream
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
 
-      // Clear any existing error
-      setError(null);
-      
-      console.log("Attempting to access microphone...");
-      
-      // Using the exact constraints from your code
       const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           sampleRate: 44100,
@@ -435,10 +424,8 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
         } 
       });
       
-      console.log("Microphone access granted successfully");
       streamRef.current = stream;
 
-      // Find supported MIME type - try the most widely supported ones first
       const mimeTypes = ['audio/webm', 'audio/mp4', 'audio/ogg', 'audio/wav'];
       let mimeType = mimeTypes.find(type => MediaRecorder.isTypeSupported(type)) || '';
       
@@ -446,7 +433,6 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
         throw new Error('No supported audio format found');
       }
 
-      // Create MediaRecorder with your exact configuration
       mediaRecorderRef.current = new MediaRecorder(stream, {
         mimeType,
         audioBitsPerSecond: 128000
@@ -475,7 +461,6 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
         }
       };
 
-      // Start recording with your exact settings
       mediaRecorderRef.current.start(100);
       setIsRecording(true);
       setError(null);
@@ -485,8 +470,6 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
       }
     } catch (err) {
       console.error('Error starting recording:', err);
-      // Show a visible error to the user to help troubleshoot permission issues
-      alert(`Microphone access error: ${err instanceof Error ? err.message : 'Unknown error'}. Please check your browser permissions.`);
       setError(err instanceof Error ? err.message : 'Failed to start recording');
       
       if (streamRef.current) {
@@ -499,19 +482,11 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       try {
-        console.log("Stopping recording...");
         mediaRecorderRef.current.stop();
         setIsRecording(false);
-        
         if (lottiePlayerRef.current) {
           lottiePlayerRef.current.pause();
           lottiePlayerRef.current.currentTime = 0;
-        }
-        
-        // Clear the recording timer
-        if (timerRef.current) {
-          clearInterval(timerRef.current);
-          timerRef.current = null;
         }
       } catch (err) {
         console.error('Error stopping recording:', err);
@@ -523,19 +498,8 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
   const processAudio = async (audioBlob: Blob) => {
     setIsProcessing(true);
     try {
-      // Create a proper FormData object
       const formData = new FormData();
-      
-      // Important: Convert the blob to a File object with the correct MIME type
-      // This needs to match what your ElevenLabs API expects
-      const audioFile = new File([audioBlob], 'audio.mp3', { 
-        type: 'audio/mp3' 
-      });
-      
-      formData.append('audio', audioFile);
-
-      // Add some debugging
-      console.log('Sending audio file to API:', audioFile.size, 'bytes');
+      formData.append('audio', audioBlob);
 
       const response = await fetch('/api/stt', {
         method: 'POST',
@@ -543,18 +507,17 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('API error response:', errorData);
-        throw new Error(errorData.error || `Server responded with ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to process audio');
       }
 
       const data = await response.json();
-      console.log('Transcription response:', data);
-      
       if (data.text) {
+        setTranscript(data.text);
+        
+        // Automatically pass the text to the parent component
+        // This will trigger the API call in the parent component
         onTranscription(data.text);
-      } else {
-        throw new Error('No transcription text returned from API');
       }
     } catch (err) {
       console.error('Error processing audio:', err);
@@ -564,7 +527,23 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
     }
   };
 
-  // Cleanup on component unmount
+  // Add timer effect to update recording time
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } else {
+      setRecordingTime(0);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isRecording]);
+
   useEffect(() => {
     return () => {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -573,10 +552,6 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
-      }
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
       }
       setIsRecording(false);
       setIsProcessing(false);
@@ -592,7 +567,7 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
         </div>
       )}
       <button
-        onClick={isRecording ? stopRecording : startRecording}
+        onClick={isRecording ? undefined : startRecording}
         disabled={disabled || isProcessing}
         className={`p-2 rounded-full transition-all duration-200 ${
           isRecording ? 'bg-transparent scale-125' : 'bg-gray-100'
@@ -603,22 +578,43 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
         {isProcessing ? (
           <Loader className="w-4 h-4 animate-spin text-gray-600" />
         ) : isRecording ? (
-          <div className="w-12 h-12 transform scale-125">
-            <video
-              ref={lottiePlayerRef as any}
-              src="/Animation - 1736917881376.webm"
-              className="w-full h-full"
-              loop
-              autoPlay
-              muted
-              disablePictureInPicture
-              disableRemotePlayback
-            />
+          <div 
+            className="relative w-12 h-12 flex items-center justify-center cursor-pointer"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (isRecording && !isProcessing) {
+                stopRecording();
+              }
+            }}
+          >
+            {/* Recording waves animation */}
+            <div className="absolute inset-0">
+              <div className="recording-wave"></div>
+              <div className="recording-wave delay-150"></div>
+              <div className="recording-wave delay-300"></div>
+            </div>
+            <div className="audio-visualizer">
+              <div className="bar"></div>
+              <div className="bar"></div>
+              <div className="bar"></div>
+              <div className="bar"></div>
+              <div className="bar"></div>
+              <div className="bar"></div>
+              <div className="bar"></div>
+              <div className="bar"></div>
+            </div>
           </div>
         ) : (
           <Mic className="w-4 h-4 text-gray-600" />
         )}
       </button>
+      
+      {transcript && (
+        <div className="mt-4 p-3 bg-gray-50 rounded-lg max-w-md">
+          <p className="text-sm font-medium">{transcript}</p>
+        </div>
+      )}
       
       {error && (
         <span className="text-xs text-red-500">{error}</span>
@@ -663,6 +659,39 @@ export default function Home() {
       default: return null;
     }
   };
+
+  // Function to get video source based on card type
+  const getVideoSource = (mode: LearningMode): string => {
+    switch (mode) {
+      case "predesigned":
+        return "/Predesigned.mp4"
+      case "brandnew":
+        return "/Brandnew.mp4"
+      case "customized":
+        return "/Customized.mp4"
+      case "review":
+        return "/Review.mp4"
+      default:
+        return "/videos/dummy-video.mp4"
+    }
+  }
+  
+  // Function to handle mouse enter on card
+  const handleCardMouseEnter = (mode: LearningMode) => {
+    setHoveredCard(mode);
+    setShowTooltip(true);
+  }
+  
+  // Function to handle mouse leave on card
+  const handleCardMouseLeave = () => {
+    setShowTooltip(false);
+    // Small delay before removing the hovered card to allow for smooth transitions
+    setTimeout(() => {
+      if (!showTooltip) {
+        setHoveredCard(null);
+      }
+    }, 300);
+  }
 
   // Function to get initial message based on selected mode
   const getInitialMessage = (mode: LearningMode): string => {
@@ -749,13 +778,10 @@ export default function Home() {
 
   // Handle card selection
   const handleCardSelect = (mode: LearningMode) => {
-    // Hide tooltip first
-    setShowTooltip(false);
-    setHoveredCard(null);
-    
     console.log("Card selected:", mode)
     setSelectedMode(mode)
     setError(null)
+    setShowTooltip(false)
   }
 
   // Create a custom submit handler that prevents default behavior
@@ -852,49 +878,88 @@ export default function Home() {
     setInputMethod("keyboard");
   };
 
-  // Function to get video source based on card type
-  const getVideoSource = (mode: LearningMode): string => {
-    switch (mode) {
-      case "predesigned":
-        return "/Predesigned.mp4"
-      case "brandnew":
-        return "/Brandnew.mp4"
-      case "customized":
-        return "/Customized.mp4"
-      case "review":
-        return "/Review.mp4"
-      default:
-        return "/videos/dummy-video.mp4"
-    }
-  }
-  
-  // Function to handle mouse enter on card
-  const handleCardMouseEnter = (mode: LearningMode) => {
-    setHoveredCard(mode);
-    setShowTooltip(true);
-  }
-  
-  // Function to handle mouse leave on card
-  const handleCardMouseLeave = () => {
-    setShowTooltip(false);
-    // Small delay before removing the hovered card to allow for smooth transitions
-    setTimeout(() => {
-      if (!showTooltip) {
-        setHoveredCard(null);
-      }
-    }, 300);
-  }
-
-  // Add these functions before the return statement
   const startRecording = async () => {
-    setIsRecording(true);
-    // Implement your recording logic here
+    try {
+      chunksRef.current = [];
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      
+      mediaRecorder.ondataavailable = (e) => {
+        chunksRef.current.push(e.data);
+      };
+      
+      mediaRecorder.onstop = async () => {
+        try {
+          const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
+          await processAudio(audioBlob);
+        } catch (err) {
+          console.error('Error processing audio:', err);
+          setError('Failed to process audio');
+        } finally {
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+          }
+        }
+      };
+      
+      mediaRecorderRef.current.start(100);
+      setIsRecording(true);
+      setError(null);
+    } catch (err) {
+      console.error('Error starting recording:', err);
+      setError(err instanceof Error ? err.message : 'Failed to start recording');
+    }
   };
 
   const stopRecording = () => {
-    setIsRecording(false);
-    // Implement your stop recording logic here
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      try {
+        mediaRecorderRef.current.stop();
+        setIsRecording(false);
+      } catch (err) {
+        console.error('Error stopping recording:', err);
+        setError('Failed to stop recording');
+      }
+    }
   };
+
+  const processAudio = async (audioBlob: Blob) => {
+    setIsProcessing(true);
+    try {
+      const formData = new FormData();
+      formData.append('audio', audioBlob);
+      
+      const response = await fetch('/api/stt', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const data = await response.json();
+      if (data.text) {
+        handleTranscription(data.text);
+      }
+    } catch (err) {
+      console.error('Error processing audio:', err);
+      setError(err instanceof Error ? err.message : 'Failed to process audio');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Add an effect to focus the textarea when keyboard input method is selected
+  useEffect(() => {
+    if (inputMethod === "keyboard" && textareaRef.current) {
+      // Short timeout to ensure the modal is rendered before focusing
+      setTimeout(() => {
+        textareaRef.current?.focus();
+      }, 100);
+    }
+  }, [inputMethod]);
 
   return (
     <div className="min-h-screen w-full overflow-y-auto">
@@ -1220,34 +1285,6 @@ export default function Home() {
                     >
                       {isProcessing ? (
                         <Loader className="h-6 w-6 animate-spin" />
-                      ) : isRecording ? (
-                        <div 
-                          className="relative w-12 h-12 flex items-center justify-center cursor-pointer"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            if (isRecording && !isProcessing) {
-                              stopRecording();
-                            }
-                          }}
-                        >
-                          {/* Recording waves animation */}
-                          <div className="absolute inset-0">
-                            <div className="recording-wave"></div>
-                            <div className="recording-wave delay-150"></div>
-                            <div className="recording-wave delay-300"></div>
-                          </div>
-                          <div className="audio-visualizer">
-                            <div className="bar"></div>
-                            <div className="bar"></div>
-                            <div className="bar"></div>
-                            <div className="bar"></div>
-                            <div className="bar"></div>
-                            <div className="bar"></div>
-                            <div className="bar"></div>
-                            <div className="bar"></div>
-                          </div>
-                        </div>
                       ) : (
                         <Mic className="h-6 w-6 text-white" />
                       )}
