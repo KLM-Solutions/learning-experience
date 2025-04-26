@@ -28,6 +28,8 @@ import { Switch } from "@/app/components/ui/switch"
 import { Label } from "@/app/components/ui/label"
 import { Alert, AlertDescription, AlertTitle } from "@/app/components/ui/alert"
 import ReactMarkdown from "react-markdown"
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
+
 
 // Define the message structure
 interface Message {
@@ -1276,15 +1278,23 @@ export default function Home() {
                   >
                     <Button
                       size="icon"
-                      className={`
-                        rounded-full w-14 h-14 
-                        ${isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'} 
-                        shadow-lg flex items-center justify-center
-                      `}
+                      className={`rounded-full w-14 h-14 ${
+                        isRecording 
+                          ? 'bg-transparent shadow-none' 
+                          : 'bg-green-500 hover:bg-green-600 shadow-lg'
+                      } flex items-center justify-center`}
                       onClick={() => isRecording ? stopRecording() : startRecording()}
                     >
                       {isProcessing ? (
                         <Loader className="h-6 w-6 animate-spin" />
+                      ) : isRecording ? (
+                        <div className="w-14 h-14">
+                          <DotLottieReact
+                            src="https://lottie.host/d9e0f21a-b610-472e-b39f-042fa5e8bbd4/yIdMu2gssb.lottie"
+                            loop
+                            autoplay
+                          />
+                        </div>
                       ) : (
                         <Mic className="h-6 w-6 text-white" />
                       )}
