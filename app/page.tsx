@@ -567,7 +567,7 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
         </div>
       )}
       <button
-        onClick={isRecording ? undefined : startRecording}
+        onClick={isRecording ? stopRecording : startRecording}
         disabled={disabled || isProcessing}
         className={`p-2 rounded-full transition-all duration-200 ${
           isRecording ? 'bg-transparent scale-125' : 'bg-gray-100'
@@ -640,6 +640,25 @@ export default function Home() {
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [hoveredCard, setHoveredCard] = useState<LearningMode | null>(null);
+  const [showTooltip, setShowTooltip] = useState(false);
+
+  // Add refs for each card
+  const predesignedCardRef = useRef<HTMLDivElement>(null);
+  const brandnewCardRef = useRef<HTMLDivElement>(null);
+  const customizedCardRef = useRef<HTMLDivElement>(null);
+  const reviewCardRef = useRef<HTMLDivElement>(null);
+
+  // Get the target ref based on which card is hovered
+  const getTargetCardRef = (hoveredCard: LearningMode) => {
+    switch (hoveredCard) {
+      case "predesigned": return brandnewCardRef;
+      case "brandnew": return predesignedCardRef;
+      case "customized": return reviewCardRef;
+      case "review": return customizedCardRef;
+      default: return null;
+    }
+  };
 
   // Function to get initial message based on selected mode
   const getInitialMessage = (mode: LearningMode): string => {
@@ -825,88 +844,49 @@ export default function Home() {
     setInputMethod("keyboard");
   };
 
-  const startRecording = async () => {
-    try {
-      chunksRef.current = [];
-      
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      
-      mediaRecorder.ondataavailable = (e) => {
-        chunksRef.current.push(e.data);
-      };
-      
-      mediaRecorder.onstop = async () => {
-        try {
-          const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
-          await processAudio(audioBlob);
-        } catch (err) {
-          console.error('Error processing audio:', err);
-          setError('Failed to process audio');
-        } finally {
-          if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
-            streamRef.current = null;
-          }
-        }
-      };
-      
-      mediaRecorderRef.current.start(100);
-      setIsRecording(true);
-      setError(null);
-    } catch (err) {
-      console.error('Error starting recording:', err);
-      setError(err instanceof Error ? err.message : 'Failed to start recording');
+  // Function to get video source based on card type
+  const getVideoSource = (mode: LearningMode): string => {
+    switch (mode) {
+      case "predesigned":
+        return "/Predesigned.mp4"
+      case "brandnew":
+        return "/Brandnew.mp4"
+      case "customized":
+        return "/Customized.mp4"
+      case "review":
+        return "/Review.mp4"
+      default:
+        return "/videos/dummy-video.mp4"
     }
+  }
+  
+  // Function to handle mouse enter on card
+  const handleCardMouseEnter = (mode: LearningMode) => {
+    setHoveredCard(mode);
+    setShowTooltip(true);
+  }
+  
+  // Function to handle mouse leave on card
+  const handleCardMouseLeave = () => {
+    setShowTooltip(false);
+    // Small delay before removing the hovered card to allow for smooth transitions
+    setTimeout(() => {
+      if (!showTooltip) {
+        setHoveredCard(null);
+      }
+    }, 300);
+  }
+
+  // Add these functions before the return statement
+  const startRecording = async () => {
+    setIsRecording(true);
+    // Implement your recording logic here
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      try {
-        mediaRecorderRef.current.stop();
-        setIsRecording(false);
-      } catch (err) {
-        console.error('Error stopping recording:', err);
-        setError('Failed to stop recording');
-      }
-    }
+    setIsRecording(false);
+    // Implement your stop recording logic here
   };
-
-  const processAudio = async (audioBlob: Blob) => {
-    setIsProcessing(true);
-    try {
-      const formData = new FormData();
-      formData.append('audio', audioBlob);
-      
-      const response = await fetch('/api/stt', {
-        method: 'POST',
-        body: formData,
-      });
-      
-      const data = await response.json();
-      if (data.text) {
-        handleTranscription(data.text);
-      }
-    } catch (err) {
-      console.error('Error processing audio:', err);
-      setError(err instanceof Error ? err.message : 'Failed to process audio');
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Add an effect to focus the textarea when keyboard input method is selected
-  useEffect(() => {
-    if (inputMethod === "keyboard" && textareaRef.current) {
-      // Short timeout to ensure the modal is rendered before focusing
-      setTimeout(() => {
-        textareaRef.current?.focus();
-      }, 100);
-    }
-  }, [inputMethod]);
 
   return (
     <div className="min-h-screen w-full overflow-y-auto">
@@ -941,10 +921,13 @@ export default function Home() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Card 1: Pre-designed Scenario */}
                 <motion.div
+                  ref={predesignedCardRef}
                   initial={{ y: 20, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ delay: 0.3 }}
                   whileHover={{ scale: 1.05, boxShadow: "0px 10px 20px rgba(0, 0, 0, 0.1)" }}
+                  onMouseEnter={() => handleCardMouseEnter("predesigned")}
+                  onMouseLeave={handleCardMouseLeave}
                 >
                   <Card
                     className="cursor-pointer h-full overflow-hidden border-0 shadow-lg"
@@ -973,10 +956,13 @@ export default function Home() {
 
                 {/* Card 2: Brand-new Scenario */}
                 <motion.div
+                  ref={brandnewCardRef}
                   initial={{ y: 20, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ delay: 0.4 }}
                   whileHover={{ scale: 1.05, boxShadow: "0px 10px 20px rgba(0, 0, 0, 0.1)" }}
+                  onMouseEnter={() => handleCardMouseEnter("brandnew")}
+                  onMouseLeave={handleCardMouseLeave}
                 >
                   <Card
                     className="cursor-pointer h-full overflow-hidden border-0 shadow-lg"
@@ -1005,10 +991,13 @@ export default function Home() {
 
                 {/* Card 3: Customized Scenario */}
                 <motion.div
+                  ref={customizedCardRef}
                   initial={{ y: 20, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ delay: 0.5 }}
                   whileHover={{ scale: 1.05, boxShadow: "0px 10px 20px rgba(0, 0, 0, 0.1)" }}
+                  onMouseEnter={() => handleCardMouseEnter("customized")}
+                  onMouseLeave={handleCardMouseLeave}
                 >
                   <Card
                     className="cursor-pointer h-full overflow-hidden border-0 shadow-lg"
@@ -1037,10 +1026,13 @@ export default function Home() {
 
                 {/* Card 4: Review Key Concepts */}
                 <motion.div
+                  ref={reviewCardRef}
                   initial={{ y: 20, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ delay: 0.6 }}
                   whileHover={{ scale: 1.05, boxShadow: "0px 10px 20px rgba(0, 0, 0, 0.1)" }}
+                  onMouseEnter={() => handleCardMouseEnter("review")}
+                  onMouseLeave={handleCardMouseLeave}
                 >
                   <Card
                     className="cursor-pointer h-full overflow-hidden border-0 shadow-lg"
@@ -1306,6 +1298,47 @@ export default function Home() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {showTooltip && hoveredCard && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          transition={{ duration: 0.2 }}
+          className="absolute bg-white rounded-lg p-4 shadow-xl z-50"
+          style={{
+            position: 'absolute',
+            top: (getTargetCardRef(hoveredCard)?.current?.offsetTop || 0) + 50,
+            left: (getTargetCardRef(hoveredCard)?.current?.offsetLeft || 0) + 50,
+            width: '300px',
+            height: '250px',
+          }}
+        >
+          <div className="relative w-full h-full flex flex-col items-center justify-center">
+            <button 
+              onClick={() => setShowTooltip(false)}
+              className="absolute top-2 right-2 text-gray-800 bg-gray-100 rounded-full p-1 z-10 hover:bg-gray-200"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <h3 className="text-gray-800 text-lg font-medium mb-2">
+              {hoveredCard === "predesigned" ? "Brand-New Scenario" :
+               hoveredCard === "brandnew" ? "Pre-designed Scenario" :
+               hoveredCard === "customized" ? "Review Key Concepts" :
+               "Customized Scenario"}
+            </h3>
+            <video 
+              src={getVideoSource(hoveredCard === "predesigned" ? "brandnew" : 
+                                  hoveredCard === "brandnew" ? "predesigned" :
+                                  hoveredCard === "customized" ? "review" : "customized")}
+              className="rounded-md w-full h-auto object-cover"
+              autoPlay
+              loop
+              muted
+            />
+          </div>
+        </motion.div>
+      )}
     </div>
   )
 }
