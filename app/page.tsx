@@ -290,15 +290,76 @@ const MessageBubble = ({ id, content, role, isCurrentlyReading, onReadMessage, o
             </div>
             
             <div className="prose prose-lg max-w-none space-y-4 markdown-custom">
-              <ReactMarkdown
-                components={{
-                  p: ({node, ...props}) => <p className="my-4 leading-relaxed" {...props} />,
-                  li: ({node, ...props}) => <li className="mb-2" {...props} />,
-                  h1: ({node, ...props}) => <h1 className="mt-6 mb-4" {...props} />,
-                  h2: ({node, ...props}) => <h2 className="mt-5 mb-4" {...props} />,
-                  h3: ({node, ...props}) => <h3 className="mt-4 mb-3" {...props} />,
-                }}
-              >
+              <ReactMarkdown components={{
+                p: ({ node, ...props }) => {
+                  // Process content to handle vertical bars
+                  const content = typeof props.children === 'string' 
+                    ? props.children 
+                    : Array.isArray(props.children) 
+                      ? props.children.map(child => 
+                          typeof child === 'string' 
+                            ? child 
+                            : child?.props?.children || ''
+                        ).join('') 
+                      : '';
+                  
+                  if (content.includes('|')) {
+                    // Split by lines first
+                    const lines = content.split('\n');
+                    
+                    // Check if this looks like a markdown table (has multiple lines with vertical bars)
+                    const tableLines = lines.filter(line => line.includes('|'));
+                    if (tableLines.length > 1) {
+                      // Process as a table
+                      return (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200 border">
+                            <tbody>
+                              {tableLines.map((line, lineIndex) => {
+                                // Skip separator lines (like |---|---|)
+                                if (line.replace(/\|/g, '').trim().replace(/[-:]/g, '') === '') {
+                                  return null;
+                                }
+                                
+                                // Split the line by vertical bars and remove empty first/last cells
+                                const cells = line.split('|').filter(cell => cell !== '');
+                                
+                                return (
+                                  <tr key={lineIndex} className={lineIndex === 0 ? "bg-gray-50" : "border-t"}>
+                                    {cells.map((cellContent, cellIndex) => {
+                                      // Process markdown formatting within cells (like **bold**)
+                                      const processedContent = cellContent.trim().replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                                      
+                                      return (
+                                        <td 
+                                          key={cellIndex} 
+                                          className="px-4 py-2 border-r last:border-r-0"
+                                          dangerouslySetInnerHTML={{ __html: processedContent }}
+                                        />
+                                      );
+                                    })}
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      );
+                    } else {
+                      // Single line with vertical bars - render as regular text
+                      return (
+                        <div>
+                          {lines.map((line, lineIndex) => (
+                            <p key={lineIndex}>{line}</p>
+                          ))}
+                        </div>
+                      );
+                    }
+                  }
+                  // Default paragraph rendering for content without vertical bars
+                  return <p {...props} />;
+                }
+              }}>
                 {content}
               </ReactMarkdown>
             </div>
@@ -320,6 +381,7 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recordingTime, setRecordingTime] = useState(0);
   const [transcript, setTranscript] = useState("");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -336,6 +398,12 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
       document.body.removeChild(script);
     };
   }, []);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const startRecording = async () => {
     try {
@@ -459,6 +527,23 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
     }
   };
 
+  // Add timer effect to update recording time
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } else {
+      setRecordingTime(0);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isRecording]);
+
   useEffect(() => {
     return () => {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -474,30 +559,56 @@ const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onTranscription, disabled
   }, []);
 
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex items-center space-x-2">
+      {isRecording && (
+        <div className="flex items-center bg-red-100 px-2 py-1 rounded-full">
+          <div className="w-2 h-2 bg-red-500 rounded-full mr-2 animate-pulse"></div>
+          <span className="text-xs font-medium">{formatTime(recordingTime)}</span>
+        </div>
+      )}
       <button
-        onClick={isRecording ? stopRecording : startRecording}
+        onClick={isRecording ? undefined : startRecording}
         disabled={disabled || isProcessing}
-        className={`
-          ${isRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'} 
-          w-24 h-24 rounded-full flex items-center justify-center transition-colors
-          ${disabled || isProcessing ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-        `}
-        title={isRecording ? "Stop recording" : "Start recording"}
+        className={`p-2 rounded-full transition-all duration-200 ${
+          isRecording ? 'bg-transparent scale-125' : 'bg-gray-100'
+        } hover:bg-opacity-90 disabled:opacity-50 relative`}
+        title={isRecording ? 'Stop Recording' : 'Start Recording'}
         type="button"
       >
         {isProcessing ? (
-          <Loader className="h-10 w-10 text-white animate-spin" />
+          <Loader className="w-4 h-4 animate-spin text-gray-600" />
+        ) : isRecording ? (
+          <div 
+            className="relative w-12 h-12 flex items-center justify-center cursor-pointer"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (isRecording && !isProcessing) {
+                stopRecording();
+              }
+            }}
+          >
+            {/* Recording waves animation */}
+            <div className="absolute inset-0">
+              <div className="recording-wave"></div>
+              <div className="recording-wave delay-150"></div>
+              <div className="recording-wave delay-300"></div>
+            </div>
+            <div className="audio-visualizer">
+              <div className="bar"></div>
+              <div className="bar"></div>
+              <div className="bar"></div>
+              <div className="bar"></div>
+              <div className="bar"></div>
+              <div className="bar"></div>
+              <div className="bar"></div>
+              <div className="bar"></div>
+            </div>
+          </div>
         ) : (
-          <Mic className="h-10 w-10 text-white" />
+          <Mic className="w-4 h-4 text-gray-600" />
         )}
       </button>
-      
-      <p className="mt-4 text-gray-500 text-center">
-        {isRecording 
-          ? "Listening... Click to stop" 
-          : "Tap the microphone and start speaking..."}
-      </p>
       
       {transcript && (
         <div className="mt-4 p-3 bg-gray-50 rounded-lg max-w-md">
@@ -1198,5 +1309,3 @@ export default function Home() {
     </div>
   )
 }
-
-
